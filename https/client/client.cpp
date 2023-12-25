@@ -26,14 +26,13 @@ class DpfPirClient
 {
 public:
     string client_id;
-    size_t query_index;
 
 private:
     std::unique_ptr<DPFPIRInterface::Stub> stub_;
     string serverAddr;
 
 public:
-    explicit DpfPirClient(std::shared_ptr<Channel> channel, string &client_id, size_t query_index, string serverAddr) : stub_(DPFPIRInterface::NewStub(channel)), client_id(client_id), query_index(query_index), serverAddr(serverAddr){};
+    explicit DpfPirClient(std::shared_ptr<Channel> channel, string &client_id, string serverAddr) : stub_(DPFPIRInterface::NewStub(channel)), client_id(client_id), serverAddr(serverAddr){};
 
     hashdatastore::hash_type DpfPir(std::vector<uint8_t> funckey)
     {
@@ -93,6 +92,50 @@ private:
     }
 };
 
+class Utils
+{
+public:
+    Utils() = delete;
+    static size_t string2uint64(string query_keyword)
+    {
+        size_t result = 0;
+        for (int i = 0; i < 8 && i < query_keyword.size(); i++)
+        {
+            result |= static_cast<size_t>(query_keyword[i]) << (8 * i);
+        }
+        return result;
+    }
+    static string m256i2string(hashdatastore::hash_type value)
+    {
+        std::string result;
+        size_t re0 = _mm256_extract_epi64(value, 3);
+        size_t re1 = _mm256_extract_epi64(value, 2);
+        size_t re2 = _mm256_extract_epi64(value, 1);
+        size_t re3 = _mm256_extract_epi64(value, 0);
+        for (int j = 0; j < 8; j++)
+        {
+            unsigned char byte = (re0 >> (j * 8)) & 0xFF;
+            result += static_cast<char>(byte);
+        }
+        for (int j = 0; j < 8; j++)
+        {
+            unsigned char byte = (re1 >> (j * 8)) & 0xFF;
+            result += static_cast<char>(byte);
+        }
+        for (int j = 0; j < 8; j++)
+        {
+            unsigned char byte = (re2 >> (j * 8)) & 0xFF;
+            result += static_cast<char>(byte);
+        }
+        for (int j = 0; j < 8; j++)
+        {
+            unsigned char byte = (re3 >> (j * 8)) & 0xFF;
+            result += static_cast<char>(byte);
+        }
+        return result;
+    }
+};
+
 int main(int argc, char *argv[])
 {
     /* 219.245.186.51 */
@@ -103,12 +146,12 @@ int main(int argc, char *argv[])
 #pragma region args
     /* args */
     string client_id;
-    size_t query_index;
+    string query_keyword;
     try
     {
         // def options
         po::options_description desc("Allowed options");
-        desc.add_options()("help,h", "Produce help message")("id", po::value<std::string>()->required(), "client id (string)")("q", po::value<size_t>()->required(), "query index (size_t)");
+        desc.add_options()("help,h", "Produce help message")("id", po::value<std::string>()->required(), "client id (string)")("q", po::value<string>()->required(), "query_keyword (string)");
 
         // parse params
         po::variables_map vm;
@@ -129,7 +172,7 @@ int main(int argc, char *argv[])
         }
         if (vm.count("q"))
         {
-            query_index = vm["q"].as<size_t>();
+            query_keyword = vm["q"].as<string>();
         }
     }
     catch (const std::exception &e)
@@ -140,11 +183,12 @@ int main(int argc, char *argv[])
 #pragma endregion args
 
     /* RPC */
-    DpfPirClient rpc_client0(grpc::CreateChannel(serverAddr0, grpc::InsecureChannelCredentials()), client_id, query_index, serverAddr0);
-    DpfPirClient rpc_client1(grpc::CreateChannel(serverAddr1, grpc::InsecureChannelCredentials()), client_id, query_index, serverAddr1);
+    DpfPirClient rpc_client0(grpc::CreateChannel(serverAddr0, grpc::InsecureChannelCredentials()), client_id, serverAddr0);
+    DpfPirClient rpc_client1(grpc::CreateChannel(serverAddr1, grpc::InsecureChannelCredentials()), client_id, serverAddr1);
 
     /* GenFuncKeys */
     size_t logN = 22;
+    size_t query_index = Utils::string2uint64(query_keyword);
     std::pair<std::vector<uint8_t>, std::vector<uint8_t>> keys = DPF::Gen(query_index, logN);
     std::cout << "[" << client_id << "] "
               << "1.GenFuncKeys." << std::endl;
@@ -157,12 +201,14 @@ int main(int argc, char *argv[])
     std::cout << "[" << client_id << "] "
               << "3.Answer reconstructed: " << std::endl;
     hashdatastore::hash_type answer = _mm256_xor_si256(answer0, answer1);
-    std::cout << "\t"
-              << "answer0:" << _mm256_extract_epi64(answer0, 0) << std::endl;
-    std::cout << "\t"
-              << "answer1:" << _mm256_extract_epi64(answer1, 0) << std::endl;
-    std::cout << "\t"
-              << "answer:" << _mm256_extract_epi64(answer, 0) << std::endl;
+    std::cout << "\tanswer:" << Utils::m256i2string(answer) << std::endl;
+
+    // std::cout << "\t"
+    //           << "answer0:" << _mm256_extract_epi64(answer0, 0) << std::endl;
+    // std::cout << "\t"
+    //           << "answer1:" << _mm256_extract_epi64(answer1, 0) << std::endl;
+    // std::cout << "\t"
+    //           << "answer:" << _mm256_extract_epi64(answer, 0) << std::endl;
 
     return 0;
 }

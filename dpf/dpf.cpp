@@ -237,6 +237,19 @@ namespace DPF
         }
     }
 
+    void EvalKeywords(const std::vector<uint8_t> &key, std::vector<size_t> keywords, size_t logn, std::vector<uint8_t> &results)
+    {
+        for (size_t i = 0; i < keywords.size(); i += 8)
+        {
+            uint8_t tmp = 0;
+            for (size_t j = 0; j < 8; j++)
+            {
+                tmp |= Eval(key, keywords[(i / 8) + j], logn) << j;
+            }
+            results.emplace_back(tmp);
+        }
+    }
+
     void EvalFullRecursive(const std::vector<uint8_t> &key, block s, uint8_t t, size_t lvl, size_t stop, std::vector<uint8_t> &res)
     {
         if (lvl == stop)
@@ -283,7 +296,7 @@ namespace DPF
 
     std::vector<uint8_t> EvalFull(const std::vector<uint8_t> &key, size_t logn)
     {
-        assert(logn <= 63);
+        assert(logn <= 63); // logn = M = 2
         std::vector<uint8_t> data;
         if (logn >= 7)
             data.reserve(1ULL << (logn - 3));

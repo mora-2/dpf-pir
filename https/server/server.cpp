@@ -11,6 +11,7 @@
 #include <immintrin.h> // Include the necessary header for
 #include <boost/program_options.hpp>
 #include <stdexcept> // throw
+#include <cassert>
 
 namespace po = boost::program_options;
 using namespace std;
@@ -30,16 +31,28 @@ class DpfPirImpl final : public DPFPIRInterface::Service
 private:
     std::mutex mu_;
     uint8_t server_id;
-    size_t logN;
+    size_t logN; // number of keyword bits
     hashdatastore db;
+    size_t db_size;
 
 public:
-    DpfPirImpl(uint8_t server_id, size_t logN) : server_id(server_id), logN(logN)
+    DpfPirImpl(uint8_t server_id, size_t logN, vector<string> &db_keys, vector<string> &db_elems) : server_id(server_id), logN(logN)
     {
-        // Fill Datastore with dummy elements for benchmark
-        for (size_t i = 0; i < (1ULL << logN); i++)
+        assert(db_keys.size() <= (1 << logN - 1));
+        assert(db_keys.size() == db_elems.size());
+        this->db_size = db_keys.size();
+        // Fill Datastore
+        for (size_t i = 0; i < db_size; i++)
         {
-            this->db.push_back(_mm256_set_epi64x(i, i, i, i));
+            this->db.push_back(db_keys[i], db_elems[i]);
+        }
+        // Pad
+        if (db_size % 8 != 0)
+        {
+            for (size_t i = 0; i < (8 - db_size % 8); i++)
+            {
+                this->db.push_back("", "");
+            }
         }
     };
 
@@ -52,8 +65,9 @@ public:
         /* receive func_key */
         std::vector<uint8_t> func_key(request->funckey().begin(), request->funckey().end());
 
-        /* make query */
-        std::vector<uint8_t> query = DPF::EvalFull(func_key, logN);
+        /* make query vector */
+        std::vector<uint8_t> query;
+        DPF::EvalKeywords(func_key, db.keyword_, logN, query);
 
         /* answer query */
         hashdatastore::hash_type answer = db.answer_pir2(query);
@@ -85,11 +99,11 @@ private:
 
 void RunServer(uint8_t server_id)
 {
-    // vector<string> db_keys = {"apple", "banana", "cat", "dog"};
-    // vector<string> db_elems = {"Aapple", "Abanana", "Acat", "Adog"};
+    vector<string> db_keys = {"a", "b", "c", "d"}; // logN = 22, max_bits = 2
+    vector<string> db_elems = {"Aapple", "Abanana", "Acat", "Adog"};
 
     size_t logN = 22;
-    DpfPirImpl service(server_id, logN);
+    DpfPirImpl service(server_id, logN, db_keys, db_elems);
 
     /* gRPC build */
     ServerBuilder builder;
@@ -113,6 +127,7 @@ void RunServer(uint8_t server_id)
 
 int main(int argc, char *argv[])
 {
+#pragma region args
     /* args */
     uint8_t server_id;
     try
@@ -146,6 +161,7 @@ int main(int argc, char *argv[])
         std::cerr << "Error: " << e.what() << std::endl;
         return 1;
     }
+#pragma endregion args
 
     /* run */
     RunServer(server_id);

@@ -32,8 +32,8 @@ int main(int argc, char **argv)
         }
         auto time1 = std::chrono::high_resolution_clock::now();
         auto keys = DPF::Gen(2, N);
-        std::vector<uint8_t> a = keys.first;
-        std::vector<uint8_t> b = keys.second;
+        auto a = keys.first;
+        auto b = keys.second;
         keysizeT += a.size();
         auto time2 = std::chrono::high_resolution_clock::now();
 

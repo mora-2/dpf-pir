@@ -13,13 +13,13 @@ set(SRCS
     hashdatastore.cpp)
 
 set(CMAKE_C_FLAGS "-ffunction-sections -Wall  -maes -msse2 -msse4.1 -mavx2 -mpclmul -Wfatal-errors -pthread -Wno-strict-overflow  -fPIC -Wno-ignored-attributes")
-set(CMAKE_CXX_FLAGS  "${CMAKE_C_FLAGS}  -std=c++14")
+set(CMAKE_CXX_FLAGS  "${CMAKE_C_FLAGS}  -std=c++14 -g")
 
 # Select flags.
 # SET(CMAKE_CXX_FLAGS_RELEASE "-O0 -g -DNDEBUG")
-SET(CMAKE_CXX_FLAGS_RELEASE "-O3 -g -DNDEBUG")
-SET(CMAKE_CXX_FLAGS_RELWITHDEBINFO " -O2 -g -ggdb -rdynamic")
-SET(CMAKE_CXX_FLAGS_DEBUG  "-O0 -g -ggdb -rdynamic")
+SET(CMAKE_CXX_FLAGS_RELEASE "-DNDEBUG")
+SET(CMAKE_CXX_FLAGS_RELWITHDEBINFO "-ggdb -rdynamic")
+SET(CMAKE_CXX_FLAGS_DEBUG  "-ggdb -rdynamic")
 
 add_library(dpf_pir ${SRCS})
 
