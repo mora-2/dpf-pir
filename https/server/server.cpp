@@ -34,6 +34,7 @@ private:
     size_t logN; // number of keyword bits
     hashdatastore db;
     size_t db_size;
+    size_t num;
 
 public:
     DpfPirImpl(uint8_t server_id, size_t logN, vector<string> &db_keys, vector<string> &db_elems) : server_id(server_id), logN(logN)
@@ -41,17 +42,24 @@ public:
         assert(db_keys.size() <= (1 << logN - 1));
         assert(db_keys.size() == db_elems.size());
         this->db_size = db_keys.size();
+        num = getnum(db_elems);
         // Fill Datastore
+        db.init(num);
         for (size_t i = 0; i < db_size; i++)
         {
-            this->db.push_back(db_keys[i], db_elems[i]);
+            this->db.push_back(db_keys[i], str2vecstr(db_elems[i], num),num);
         }
         // Pad
         if (db_size % 8 != 0)
         {
+            vector<string> emp;
+            for(int i=0; i<num; i++)
+            {
+                emp.push_back("");
+            }
             for (size_t i = 0; i < (8 - db_size % 8); i++)
             {
-                this->db.push_back("", "");
+                this->db.push_back("", emp, num);
             }
         }
     };
@@ -70,11 +78,18 @@ public:
         DPF::EvalKeywords(func_key, db.keyword_, logN, query);
 
         /* answer query */
-        hashdatastore::hash_type answer = db.answer_pir2(query);
-
+        std::vector<hashdatastore::hash_type, AlignmentAllocator<hashdatastore::hash_type, sizeof(hashdatastore::hash_type)>> answer;
+        for(int i=0; i<num; i++)
+        {
+            answer.push_back(db.answer_pir2_s(query,i));
+        }
         /* send answer */
-        response->set_answer(m256iToStr(answer));
-
+        std::string ans;
+        for(int i=0; i<num; i++)
+        {
+            ans+=m256iToStr(answer[i]);
+        }
+        response->set_answer(ans);
         std::cout << "[" << client_id << "] "
                   << "2.End PIR." << std::endl;
         return Status::OK;
@@ -86,21 +101,52 @@ private:
     {
         alignas(32) uint8_t result[32]; // Assuming __m256i is 256 bits (32 bytes)
         _mm256_store_si256((__m256i *)result, value);
-
         std::string resultString;
         for (int i = 0; i < 32; ++i)
         {
             resultString += static_cast<char>(result[i]);
         }
-
         return resultString;
+    }
+
+    std::vector<std::string> str2vecstr(std::string s, int num)
+    {
+        std::vector<std::string> result;
+        int n = s.size();
+        for(int i=0; i<num; i++)
+        {
+            if(n > 32){
+                result.push_back(s.substr(i*32, 32));
+                n = n-32;
+            }
+            else{
+                result.push_back(s.substr(i*32, n));
+                break;
+            }
+        }
+        if(result.size() < num){
+            result.resize(num);
+        }
+        return result;
+    }
+
+    int getnum(std::vector<std::string> &s)
+    {
+        int n=0;
+        for(int i=0; i<s.size(); i++){
+            if(s[i].size() > n){
+                n = s[i].size();
+            }
+        }
+        if(n%32==0) {return n/32;}
+        return n/32 + 1;
     }
 };
 
 void RunServer(uint8_t server_id)
 {
     vector<string> db_keys = {"a", "b", "c", "d"}; // logN = 22, max_bits = 2
-    vector<string> db_elems = {"Aapple", "Abanana", "Acat", "Adog"};
+    vector<string> db_elems = {"AappleAappleAappleAappleAappleaaAappleAAHSJAappleAappleAappleAappleAappleaaAappleAAHSJ","AbananaAbanana","AcatAcat","AdogAdog"};
 
     size_t logN = 22;
     DpfPirImpl service(server_id, logN, db_keys, db_elems);

@@ -4,7 +4,6 @@
 #include <grpcpp/channel.h>
 #include <grpcpp/security/credentials.h>
 #include <grpcpp/client_context.h>
-
 #include "dpf_pir.grpc.pb.h"
 #include "dpf.h"
 #include "hashdatastore.h"
@@ -26,16 +25,17 @@ class DpfPirClient
 {
 public:
     string client_id;
-
+    int num;
 private:
     std::unique_ptr<DPFPIRInterface::Stub> stub_;
     string serverAddr;
 
 public:
-    explicit DpfPirClient(std::shared_ptr<Channel> channel, string &client_id, string serverAddr) : stub_(DPFPIRInterface::NewStub(channel)), client_id(client_id), serverAddr(serverAddr){};
+    explicit DpfPirClient(std::shared_ptr<Channel> channel, string &client_id, string serverAddr, int num) : stub_(DPFPIRInterface::NewStub(channel)), client_id(client_id), serverAddr(serverAddr), num(num){};
 
-    hashdatastore::hash_type DpfPir(std::vector<uint8_t> funckey)
+    std::vector<hashdatastore::hash_type, AlignmentAllocator<hashdatastore::hash_type, sizeof(hashdatastore::hash_type)>> DpfPir(std::vector<uint8_t> funckey)
     {
+        std::vector<hashdatastore::hash_type, AlignmentAllocator<hashdatastore::hash_type, sizeof(hashdatastore::hash_type)>> result;
         FuncKey request;
         Answer reply;
         ClientContext context;
@@ -51,15 +51,20 @@ public:
 
             std::cout << "[" << this->client_id << "][" << this->serverAddr << "] "
                       << "2.Receive PIR result." << std::endl;
-            return stringToM256i(reply.answer());
+            for(int i=0; i<this->num; i++){
+                result.push_back(stringToM256i(reply.answer().substr(i*32,32)));
+            }
         }
         else
         {
             std::cout << "RPC failed" << std::endl;
             std::cout << status.error_code() << ": " << status.error_message()
                       << std::endl;
-            return __m256i();
+            for(int i=0; i<this->num; i++){
+                result.push_back(__m256i());
+            }
         }
+        return result;
     }
 
 private:
@@ -68,7 +73,6 @@ private:
     {
         __m256i result;
         alignas(32) uint8_t buffer[32];
-
         // Ensure the string is large enough to fill the buffer
         if (str.size() >= sizeof(buffer))
         {
@@ -183,8 +187,9 @@ int main(int argc, char *argv[])
 #pragma endregion args
 
     /* RPC */
-    DpfPirClient rpc_client0(grpc::CreateChannel(serverAddr0, grpc::InsecureChannelCredentials()), client_id, serverAddr0);
-    DpfPirClient rpc_client1(grpc::CreateChannel(serverAddr1, grpc::InsecureChannelCredentials()), client_id, serverAddr1);
+    int num=3;
+    DpfPirClient rpc_client0(grpc::CreateChannel(serverAddr0, grpc::InsecureChannelCredentials()), client_id, serverAddr0, num);
+    DpfPirClient rpc_client1(grpc::CreateChannel(serverAddr1, grpc::InsecureChannelCredentials()), client_id, serverAddr1, num);
 
     /* GenFuncKeys */
     size_t logN = 22;
@@ -194,15 +199,22 @@ int main(int argc, char *argv[])
               << "1.GenFuncKeys." << std::endl;
 
     /* PIR */
-    hashdatastore::hash_type answer0 = rpc_client0.DpfPir(keys.first);
-    hashdatastore::hash_type answer1 = rpc_client1.DpfPir(keys.second);
+    std::vector<hashdatastore::hash_type, AlignmentAllocator<hashdatastore::hash_type, sizeof(hashdatastore::hash_type)>> answer0 = rpc_client0.DpfPir(keys.first);
+    std::vector<hashdatastore::hash_type, AlignmentAllocator<hashdatastore::hash_type, sizeof(hashdatastore::hash_type)>> answer1 = rpc_client1.DpfPir(keys.second);
 
     /* Answer reconstructed */
     std::cout << "[" << client_id << "] "
               << "3.Answer reconstructed: " << std::endl;
-    hashdatastore::hash_type answer = _mm256_xor_si256(answer0, answer1);
-    std::cout << "\tanswer:" << Utils::m256i2string(answer) << std::endl;
-
+    std::vector<hashdatastore::hash_type, AlignmentAllocator<hashdatastore::hash_type, sizeof(hashdatastore::hash_type)>> finanswer;
+    for(int i=0; i<num; i++)
+    {
+        finanswer.push_back(_mm256_xor_si256(answer0[i], answer1[i]));
+    }
+    std::string finalstring;
+    for(int i=0; i<num; i++){
+        finalstring +=  Utils::m256i2string(finanswer[i]);
+    }
+    std::cout << "\tanswer:" << finalstring << std::endl;
     // std::cout << "\t"
     //           << "answer0:" << _mm256_extract_epi64(answer0, 0) << std::endl;
     // std::cout << "\t"

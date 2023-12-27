@@ -1,0 +1,36 @@
+#IncludeRegexLine: ^[ 	]*[#%][ 	]*(include|import)[ 	]*[<"]([^">]+)([">])
+
+#IncludeRegexScan: ^.*$
+
+#IncludeRegexComplain: ^$
+
+#IncludeRegexTransform: 
+
+/home/nsklab/yyh/dpf-pir1/dpf/alignment_allocator.h
+stdlib.h
+-
+malloc.h
+-
+
+/home/nsklab/yyh/dpf-pir1/dpf/hashdatastore.cpp
+hashdatastore.h
+/home/nsklab/yyh/dpf-pir1/dpf/hashdatastore.h
+cassert
+-
+
+/home/nsklab/yyh/dpf-pir1/dpf/hashdatastore.h
+iostream
+-
+vector
+-
+cstdint
+-
+x86intrin.h
+-
+alignment_allocator.h
+/home/nsklab/yyh/dpf-pir1/dpf/alignment_allocator.h
+string
+-
+cassert
+-
+
