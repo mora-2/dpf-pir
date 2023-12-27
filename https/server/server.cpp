@@ -37,6 +37,7 @@ private:
     size_t logN; // number of keyword bits
     hashdatastore db;
     size_t db_size;
+    size_t num;
 
 public:
     DpfPirImpl(uint8_t server_id, size_t logN, vector<string> &db_keys, vector<string> &db_elems) : server_id(server_id), logN(logN)
@@ -44,17 +45,24 @@ public:
         assert(db_keys.size() <= ((1ULL << logN) - 1));
         assert(db_keys.size() == db_elems.size());
         this->db_size = db_keys.size();
+        num = getnum(db_elems);
+        db.resize_data(num);
         // Fill Datastore
         for (size_t i = 0; i < db_size; i++)
         {
-            this->db.push_back(db_keys[i], db_elems[i], hashdatastore::KeywordType::STRING);
+            this->db.push_back(db_keys[i], hashdatastore::KeywordType::STRING, str2vecstr(db_elems[i], num), num);
         }
         // Pad
         if (db_size % 8 != 0)
         {
+            vector<string> emp;
+            for (size_t i = 0; i < num; i++)
+            {
+                emp.push_back("");
+            }
             for (size_t i = 0; i < (8 - db_size % 8); i++)
             {
-                this->db.push_back("", "", hashdatastore::KeywordType::STRING);
+                this->db.push_back("", hashdatastore::KeywordType::STRING, emp, num);
             }
         }
     };
@@ -78,20 +86,28 @@ public:
             db_elems.push_back(it.value());
         }
 
+        num = getnum(db_elems);
+        db.resize_data(num);
+
         assert(db_keys.size() <= ((1ULL << logN) - 1));
         assert(db_keys.size() == db_elems.size());
         this->db_size = db_keys.size();
         // Fill Datastore
         for (size_t i = 0; i < db_size; i++)
         {
-            this->db.push_back(db_keys[i], db_elems[i], hashdatastore::KeywordType::HASH);
+            this->db.push_back(db_keys[i], hashdatastore::KeywordType::HASH, str2vecstr(db_elems[i], num), num);
         }
         // Pad
         if (db_size % 8 != 0)
         {
+            vector<string> emp;
+            for (size_t i = 0; i < num; i++)
+            {
+                emp.push_back("");
+            }
             for (size_t i = 0; i < (8 - db_size % 8); i++)
             {
-                this->db.push_back("", "", hashdatastore::KeywordType::HASH);
+                this->db.push_back("", hashdatastore::KeywordType::HASH, emp, num);
             }
         }
     };
@@ -107,13 +123,25 @@ public:
 
         /* make query vector */
         std::vector<uint8_t> query;
-        DPF::EvalKeywords(func_key, db.hashs_, logN, query);
+        DPF::EvalKeywords(func_key, db.keyword_, logN, query);
+        // DPF::EvalKeywords(func_key, db.hashs_, logN, query);
 
         /* answer query */
-        hashdatastore::hash_type answer = db.answer_pir2(query);
+        std::vector<hashdatastore::hash_type, AlignmentAllocator<hashdatastore::hash_type, sizeof(hashdatastore::hash_type)>> answer;
+        for (size_t i = 0; i < num; i++)
+        {
+            answer.push_back(db.answer_pir2(query, i));
+        }
+
+        /* set answer */
+        std::string ans;
+        for (size_t i = 0; i < num; i++)
+        {
+            ans += m256iToStr(answer[i]);
+        }
 
         /* send answer */
-        response->set_answer(m256iToStr(answer));
+        response->set_answer(ans);
 
         std::cout << "[" << client_id << "] "
                   << "2.End PIR." << std::endl;
@@ -128,22 +156,64 @@ private:
         _mm256_store_si256((__m256i *)result, value);
 
         std::string resultString;
-        for (int i = 0; i < 32; ++i)
+        for (size_t i = 0; i < 32; ++i)
         {
             resultString += static_cast<char>(result[i]);
         }
 
         return resultString;
     }
+
+    std::vector<std::string> str2vecstr(std::string s, size_t num)
+    {
+        std::vector<std::string> result;
+        size_t n = s.size();
+        for (size_t i = 0; i < num; i++)
+        {
+            if (n > 32)
+            {
+                result.push_back(s.substr(i * 32, 32));
+                n = n - 32;
+            }
+            else
+            {
+                result.push_back(s.substr(i * 32, n));
+                break;
+            }
+        }
+        if (result.size() < num)
+        {
+            result.resize(num);
+        }
+        return result;
+    }
+
+    size_t getnum(std::vector<std::string> &s)
+    {
+        size_t n = 0;
+        for (size_t i = 0; i < s.size(); i++)
+        {
+            if (s[i].size() > n)
+            {
+                n = s[i].size();
+            }
+        }
+        if (n % 32 == 0)
+        {
+            return n / 32;
+        }
+        return n / 32 + 1;
+    }
 };
 
 void RunServer(uint8_t server_id)
 {
-    // vector<string> db_keys = {"a", "b", "c", "d"}; // logN = 22, max_bits = 2
-    // vector<string> db_elems = {"Aapple", "Abanana", "Acat", "Adog"};
+    vector<string> db_keys = {"a", "b", "c", "d"}; // logN = 22, max_bits = 2
+    vector<string> db_elems = {"AappleAappleAappleAappleAappleaaAappleAAHSJAappleAappleAappleAappleAappleaaAappleAAHSJ", "AbananaAbanana", "AcatAcat", "AdogAdog"};
     string json_path = "/home/yuance/Work/Encryption/PIR/code/PIR/dpf-pir/test/data/random_data.json";
     size_t logN = 48; // 48 bit hash for one million entries
-    DpfPirImpl service(server_id, logN, json_path);
+    DpfPirImpl service(server_id, logN, db_keys, db_elems);
+    // DpfPirImpl service(server_id, logN, json_path);
 
     /* gRPC build */
     ServerBuilder builder;
