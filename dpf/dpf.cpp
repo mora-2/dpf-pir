@@ -76,7 +76,7 @@ namespace DPF
     std::pair<std::vector<uint8_t>, std::vector<uint8_t>> Gen(size_t alpha, size_t logn)
     {
         assert(logn <= 63);
-        assert(alpha < (1 << logn));
+        assert(static_cast<uint64_t>(alpha) < ((1ULL << logn) - 1));
         std::vector<uint8_t> ka, kb, CW;
         PRNG p = PRNG::getTestPRNG();
         block s0, s1;
@@ -182,7 +182,7 @@ namespace DPF
     bool Eval(const std::vector<uint8_t> &key, size_t x, size_t logn)
     {
         assert(logn <= 63);
-        assert(x < (1 << logn));
+        assert(static_cast<uint64_t>(x) < ((1ULL << logn) - 1));
         block s;
         memcpy(&s, key.data(), 16);
         uint8_t t = key.data()[16];
@@ -237,14 +237,14 @@ namespace DPF
         }
     }
 
-    void EvalKeywords(const std::vector<uint8_t> &key, std::vector<size_t> keywords, size_t logn, std::vector<uint8_t> &results)
+    void EvalKeywords(const std::vector<uint8_t> &key, std::vector<size_t> hashs, size_t logn, std::vector<uint8_t> &results)
     {
-        for (size_t i = 0; i < keywords.size(); i += 8)
+        for (size_t i = 0; i < hashs.size(); i += 8)
         {
             uint8_t tmp = 0;
             for (size_t j = 0; j < 8; j++)
             {
-                tmp |= Eval(key, keywords[(i / 8) + j], logn) << j;
+                tmp |= Eval(key, hashs[(i / 8) + j], logn) << j;
             }
             results.emplace_back(tmp);
         }

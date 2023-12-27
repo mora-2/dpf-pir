@@ -10,6 +10,7 @@
 #include "hashdatastore.h"
 #include <immintrin.h>
 #include <boost/program_options.hpp>
+#include <future> // muti-thread
 
 namespace po = boost::program_options;
 using namespace std;
@@ -187,8 +188,11 @@ int main(int argc, char *argv[])
     DpfPirClient rpc_client1(grpc::CreateChannel(serverAddr1, grpc::InsecureChannelCredentials()), client_id, serverAddr1);
 
     /* GenFuncKeys */
-    size_t logN = 22;
-    size_t query_index = Utils::string2uint64(query_keyword);
+    size_t logN = 48; // 48 bit hash for one million entries
+    uint64_t HASH_MASK = 0xFFFFFFFFFFFF;
+    // size_t query_index = Utils::string2uint64(query_keyword);
+    std::hash<std::string> hashFunction;
+    size_t query_index = hashFunction(query_keyword) & HASH_MASK; // 48 bits
     std::pair<std::vector<uint8_t>, std::vector<uint8_t>> keys = DPF::Gen(query_index, logN);
     std::cout << "[" << client_id << "] "
               << "1.GenFuncKeys." << std::endl;
@@ -196,6 +200,19 @@ int main(int argc, char *argv[])
     /* PIR */
     hashdatastore::hash_type answer0 = rpc_client0.DpfPir(keys.first);
     hashdatastore::hash_type answer1 = rpc_client1.DpfPir(keys.second);
+    // // Async call to rpc_client0.DpfPir(keys.first)
+    // std::future<hashdatastore::hash_type> future_answer0 =
+    //     std::async(std::launch::async, [&rpc_client0, &keys]()-> hashdatastore::hash_type
+    //                { return rpc_client0.DpfPir(keys.first); });
+
+    // // Async call to rpc_client1.DpfPir(keys.second)
+    // std::future<hashdatastore::hash_type> future_answer1 =
+    //     std::async(std::launch::async, [&rpc_client1, &keys]()-> hashdatastore::hash_type
+    //                  { return rpc_client1.DpfPir(keys.second); });
+
+    // // Wait for both futures to be ready and get the results
+    // hashdatastore::hash_type answer0 = future_answer0.get();
+    // hashdatastore::hash_type answer1 = future_answer1.get();
 
     /* Answer reconstructed */
     std::cout << "[" << client_id << "] "

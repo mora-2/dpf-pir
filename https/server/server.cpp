@@ -12,8 +12,11 @@
 #include <boost/program_options.hpp>
 #include <stdexcept> // throw
 #include <cassert>
+#include <fstream>
+#include <nlohmann/json.hpp>
 
 namespace po = boost::program_options;
+using json = nlohmann::json;
 using namespace std;
 using dpfpir::Answer;
 using dpfpir::DPFPIRInterface;
@@ -38,20 +41,57 @@ private:
 public:
     DpfPirImpl(uint8_t server_id, size_t logN, vector<string> &db_keys, vector<string> &db_elems) : server_id(server_id), logN(logN)
     {
-        assert(db_keys.size() <= (1 << logN - 1));
+        assert(db_keys.size() <= ((1ULL << logN) - 1));
         assert(db_keys.size() == db_elems.size());
         this->db_size = db_keys.size();
         // Fill Datastore
         for (size_t i = 0; i < db_size; i++)
         {
-            this->db.push_back(db_keys[i], db_elems[i]);
+            this->db.push_back(db_keys[i], db_elems[i], hashdatastore::KeywordType::STRING);
         }
         // Pad
         if (db_size % 8 != 0)
         {
             for (size_t i = 0; i < (8 - db_size % 8); i++)
             {
-                this->db.push_back("", "");
+                this->db.push_back("", "", hashdatastore::KeywordType::STRING);
+            }
+        }
+    };
+    DpfPirImpl(uint8_t server_id, size_t logN, string json_data_path) : server_id(server_id), logN(logN)
+    {
+        std::ifstream file(json_data_path);
+        if (!file.is_open())
+        {
+            std::cerr << "Error opening file.\n";
+        }
+
+        json jsonData;
+        file >> jsonData;
+
+        std::vector<std::string> db_keys;
+        std::vector<std::string> db_elems;
+
+        for (auto it = jsonData.begin(); it != jsonData.end(); ++it)
+        {
+            db_keys.push_back(it.key());
+            db_elems.push_back(it.value());
+        }
+
+        assert(db_keys.size() <= ((1ULL << logN) - 1));
+        assert(db_keys.size() == db_elems.size());
+        this->db_size = db_keys.size();
+        // Fill Datastore
+        for (size_t i = 0; i < db_size; i++)
+        {
+            this->db.push_back(db_keys[i], db_elems[i], hashdatastore::KeywordType::HASH);
+        }
+        // Pad
+        if (db_size % 8 != 0)
+        {
+            for (size_t i = 0; i < (8 - db_size % 8); i++)
+            {
+                this->db.push_back("", "", hashdatastore::KeywordType::HASH);
             }
         }
     };
@@ -67,7 +107,7 @@ public:
 
         /* make query vector */
         std::vector<uint8_t> query;
-        DPF::EvalKeywords(func_key, db.keyword_, logN, query);
+        DPF::EvalKeywords(func_key, db.hashs_, logN, query);
 
         /* answer query */
         hashdatastore::hash_type answer = db.answer_pir2(query);
@@ -99,11 +139,11 @@ private:
 
 void RunServer(uint8_t server_id)
 {
-    vector<string> db_keys = {"a", "b", "c", "d"}; // logN = 22, max_bits = 2
-    vector<string> db_elems = {"Aapple", "Abanana", "Acat", "Adog"};
-
-    size_t logN = 22;
-    DpfPirImpl service(server_id, logN, db_keys, db_elems);
+    // vector<string> db_keys = {"a", "b", "c", "d"}; // logN = 22, max_bits = 2
+    // vector<string> db_elems = {"Aapple", "Abanana", "Acat", "Adog"};
+    string json_path = "/home/yuance/Work/Encryption/PIR/code/PIR/dpf-pir/test/data/random_data.json";
+    size_t logN = 48; // 48 bit hash for one million entries
+    DpfPirImpl service(server_id, logN, json_path);
 
     /* gRPC build */
     ServerBuilder builder;

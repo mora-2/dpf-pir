@@ -12,16 +12,31 @@ class hashdatastore
 {
 public:
     typedef __m256i hash_type;
+    enum KeywordType
+    {
+        STRING,
+        HASH
+    };
 
     hashdatastore() = default;
 
     void reserve(size_t n) { data_.reserve(n); }
-    void push_back(std::string keyword_str, std::string data_str)
+    void push_back(std::string keyword_str, std::string data_str, KeywordType keyword_type)
     {
-        hash_type data = string2m256i(data_str);
-        data_.push_back(data);
-        size_t keyword = string2uint64(keyword_str);
-        keyword_.push_back(keyword);
+        if (keyword_type == hashdatastore::KeywordType::STRING)
+        {
+            hash_type data = string2m256i(data_str);
+            data_.push_back(data);
+            size_t keyword = string2uint64(keyword_str);
+            keyword_.push_back(keyword);
+        }
+        else if (keyword_type == hashdatastore::KeywordType::HASH)
+        {
+            hash_type data = string2m256i(data_str);
+            data_.push_back(data);
+            size_t HashValue = hashFunction_(keyword_str) & this->HASH_MASK; // 48 bits
+            hashs_.push_back(HashValue);
+        }
     }
     void push_back(const hash_type &data) { data_.push_back(data); }
     void push_back(hash_type &&data) { data_.push_back(data); }
@@ -63,7 +78,10 @@ private:
 
 public:
     std::vector<size_t> keyword_;
+    std::vector<size_t> hashs_;
+    uint64_t HASH_MASK = 0xFFFFFFFFFFFF;
 
 private:
     std::vector<hash_type, AlignmentAllocator<hash_type, sizeof(hash_type)>> data_;
+    std::hash<std::string> hashFunction_;
 };
