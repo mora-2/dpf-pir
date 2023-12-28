@@ -55,7 +55,7 @@ public:
         // size_t originalSize = answer.size();
         // size_t newSize = (originalSize + 31) / 32 * 32;
         // answer.append(newSize - originalSize, ' ');
-        
+
         if (status.ok())
         {
 
@@ -63,14 +63,7 @@ public:
                       << "2.Receive PIR result." << std::endl;
             for (size_t i = 0; i < this->num; i++)
             {
-                // size_t startPos = i * 32;
-                // if (startPos < reply.answer().size())
-                // {
-                //     result.push_back(stringToM256i(reply.answer().substr(startPos, 32)));
-                // }
-
                 result.push_back(stringToM256i(reply.answer().substr(i * 32, 32)));
-                // result.push_back(stringToM256i(answer.substr(i * 32, 32)));
             }
         }
         else
@@ -164,8 +157,8 @@ int main(int argc, char *argv[])
 {
     /* 219.245.186.51 */
     string Addr = "localhost";
-    string serverAddr0 = Addr + ":50050";
-    string serverAddr1 = Addr + ":50051";
+    string serverAddr0 = Addr + ":50053";
+    string serverAddr1 = Addr + ":50054";
 
 #pragma region args
     /* args */
@@ -213,10 +206,10 @@ int main(int argc, char *argv[])
 
     /* GenFuncKeys */
     size_t logN = 48; // 48 bit hash for one million entries
-    size_t query_index = Utils::string2uint64(query_keyword);
-    // uint64_t HASH_MASK = 0xFFFFFFFFFFFF;
-    // std::hash<std::string> hashFunction;
-    // size_t query_index = hashFunction(query_keyword) & HASH_MASK; // 48 bits
+    // size_t query_index = Utils::string2uint64(query_keyword);
+    uint64_t HASH_MASK = 0xFFFFFFFFFFFF;
+    std::hash<std::string> hashFunction;
+    size_t query_index = hashFunction(query_keyword) & HASH_MASK; // 48 bits
     std::pair<std::vector<uint8_t>, std::vector<uint8_t>> keys = DPF::Gen(query_index, logN);
     std::cout << "[" << client_id << "] "
               << "1.GenFuncKeys." << std::endl;
@@ -252,13 +245,6 @@ int main(int argc, char *argv[])
         answer_str += Utils::m256i2string(answer[i]);
     }
     std::cout << "\tanswer:" << answer_str << std::endl;
-
-    // std::cout << "\t"
-    //           << "answer0:" << _mm256_extract_epi64(answer0, 0) << std::endl;
-    // std::cout << "\t"
-    //           << "answer1:" << _mm256_extract_epi64(answer1, 0) << std::endl;
-    // std::cout << "\t"
-    //           << "answer:" << _mm256_extract_epi64(answer, 0) << std::endl;
 
     return 0;
 }

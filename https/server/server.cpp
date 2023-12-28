@@ -14,6 +14,7 @@
 #include <cassert>
 #include <fstream>
 #include <nlohmann/json.hpp>
+#include <bitset>
 
 namespace po = boost::program_options;
 using json = nlohmann::json;
@@ -37,7 +38,7 @@ private:
     size_t logN; // number of keyword bits
     hashdatastore db;
     size_t db_size;
-    size_t num;
+    size_t num; // num_value_slice
 
 public:
     DpfPirImpl(uint8_t server_id, size_t logN, vector<string> &db_keys, vector<string> &db_elems) : server_id(server_id), logN(logN)
@@ -88,7 +89,6 @@ public:
 
         num = getnum(db_elems);
         db.resize_data(num);
-
         assert(db_keys.size() <= ((1ULL << logN) - 1));
         assert(db_keys.size() == db_elems.size());
         this->db_size = db_keys.size();
@@ -123,8 +123,7 @@ public:
 
         /* make query vector */
         std::vector<uint8_t> query;
-        DPF::EvalKeywords(func_key, db.keyword_, logN, query);
-        // DPF::EvalKeywords(func_key, db.hashs_, logN, query);
+        DPF::EvalKeywords(func_key, db.hashs_, logN, query);
 
         /* answer query */
         std::vector<hashdatastore::hash_type, AlignmentAllocator<hashdatastore::hash_type, sizeof(hashdatastore::hash_type)>> answer;
@@ -208,20 +207,19 @@ private:
 
 void RunServer(uint8_t server_id)
 {
-    vector<string> db_keys = {"a", "b", "c", "d"}; // logN = 22, max_bits = 2
-    vector<string> db_elems = {"AappleAappleAappleAappleAappleaaAappleAAHSJAappleAappleAappleAappleAappleaaAappleAAHSJ", "AbananaAbanana", "AcatAcat", "AdogAdog"};
-    string json_path = "/home/yuance/Work/Encryption/PIR/code/PIR/dpf-pir/test/data/random_data.json";
+    // vector<string> db_keys = {"a", "b", "c", "d"}; // logN = 22, max_bits = 2
+    // vector<string> db_elems = {"AappleAappleAappleAappleAappleaaAappleAAHSJAappleAappleAappleAappleAappleaaAappleAAHSJ", "AbananaAbanana", "AcatAcat", "AdogAdog"};
+    string json_path = "/home/yuance/Work/Encryption/PIR/code/PIR/dpf-pir/test/data/random_data10k.json";
     size_t logN = 48; // 48 bit hash for one million entries
-    DpfPirImpl service(server_id, logN, db_keys, db_elems);
-    // DpfPirImpl service(server_id, logN, json_path);
+    DpfPirImpl service(server_id, logN, json_path);
 
     /* gRPC build */
     ServerBuilder builder;
     std::string server_address;
     if (server_id == 0)
-        server_address = "0.0.0.0:50050";
+        server_address = "0.0.0.0:50053";
     else if (server_id == 1)
-        server_address = "0.0.0.0:50051";
+        server_address = "0.0.0.0:50054";
     else
         throw std::invalid_argument("Invalid Server ID: " + std::to_string(server_id));
 
@@ -263,7 +261,6 @@ int main(int argc, char *argv[])
             server_id = std::stoi(vm["id"].as<std::string>());
             if (server_id != 0 && server_id != 1)
                 throw("Invalid Server ID: " + std::to_string(server_id));
-            // std::cout << "Input file: " << vm["input-file"].as<std::string>() << std::endl;
         }
     }
     catch (const std::exception &e)

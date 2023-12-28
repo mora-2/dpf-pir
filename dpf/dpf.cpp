@@ -244,7 +244,7 @@ namespace DPF
             uint8_t tmp = 0;
             for (size_t j = 0; j < 8; j++)
             {
-                tmp |= Eval(key, hashs[(i / 8) + j], logn) << j;
+                tmp |= Eval(key, hashs[i + j], logn) << j;
             }
             results.emplace_back(tmp);
         }

@@ -7,6 +7,7 @@
 #include "alignment_allocator.h"
 #include <string>
 #include <cassert>
+#include <iostream>
 
 class hashdatastore
 {

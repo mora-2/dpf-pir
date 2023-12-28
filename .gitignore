@@ -240,3 +240,5 @@ test/build/CMakeFiles/test.dir/progress.make
 test/build/CMakeFiles/test.dir/test.cpp.o
 test/build/CMakeFiles/test.dir/test.cpp.o.d
 test/data/random_data.json
+test/data/random_data10k.json
+test/data/random.json
