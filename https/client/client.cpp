@@ -10,8 +10,8 @@
 #include "hashdatastore.h"
 #include <immintrin.h>
 #include <boost/program_options.hpp>
-#include <future> // muti-thread
 #include <cassert>
+#include <thread>
 
 namespace po = boost::program_options;
 using namespace std;
@@ -33,7 +33,6 @@ public:
     size_t num_slice;
     size_t logN;
 
-private:
     std::unique_ptr<DPFPIRInterface::Stub> stub_;
     string serverAddr;
 
@@ -78,7 +77,7 @@ public:
         return keys;
     }
 
-    std::vector<hashdatastore::hash_type, hashdatastore::HashTypeAllocator> DpfPir(std::vector<uint8_t> funckey)
+    std::vector<hashdatastore::hash_type, hashdatastore::HashTypeAllocator> DpfPir(std::vector<uint8_t> &funckey)
     {
         std::vector<hashdatastore::hash_type, hashdatastore::HashTypeAllocator> result;
 
@@ -92,11 +91,6 @@ public:
         request.set_funckey(key_str);
 
         Status status = stub_->DpfPir(&context, request, &reply);
-        // // pad
-        // string answer = reply.answer();
-        // size_t originalSize = answer.size();
-        // size_t newSize = (originalSize + 31) / 32 * 32;
-        // answer.append(newSize - originalSize, ' ');
 
         if (status.ok())
         {
@@ -136,7 +130,7 @@ public:
         return answer_str;
     }
 
-private:
+public: // for parallel
     // Convert string to __m256i
     __m256i stringToM256i(const std::string &str)
     {
@@ -165,6 +159,7 @@ private:
         return result;
     }
 
+private:
     static string m256i2string(hashdatastore::hash_type value)
     {
         std::string result;
@@ -195,6 +190,8 @@ private:
         return result;
     }
 };
+
+void DpfPir_Parallel(DpfPirClient &rpc, std::vector<uint8_t> &funckey, std::vector<hashdatastore::hash_type, hashdatastore::HashTypeAllocator> &ans);
 
 int main(int argc, char *argv[])
 {
@@ -257,8 +254,15 @@ int main(int argc, char *argv[])
     std::cout << "[" << client_id << "] 2.GenFuncKeys." << std::endl;
 
     /* PIR */
-    std::vector<hashdatastore::hash_type, hashdatastore::HashTypeAllocator> answer0 = rpc_client0.DpfPir(keys.first);
-    std::vector<hashdatastore::hash_type, hashdatastore::HashTypeAllocator> answer1 = rpc_client1.DpfPir(keys.second);
+    std::vector<hashdatastore::hash_type, hashdatastore::HashTypeAllocator> answer0, answer1;
+    std::thread pir0(std::bind(DpfPir_Parallel, std::ref(rpc_client0), std::ref(keys.first), std::ref(answer0)));
+    std::thread pir1(std::bind(DpfPir_Parallel, std::ref(rpc_client1), std::ref(keys.second), std::ref(answer1)));
+
+    pir0.join(); // wait for finishing
+    pir1.join();
+    // std::vector<hashdatastore::hash_type, hashdatastore::HashTypeAllocator>
+    //     answer0 = rpc_client0.DpfPir(keys.first);
+    // std::vector<hashdatastore::hash_type, hashdatastore::HashTypeAllocator> answer1 = rpc_client1.DpfPir(keys.second);
 
     /* Answer reconstructed */
     string answer_str = DpfPirClient::Reconstruction(answer0, answer1, rpc_client0.num_slice);
@@ -267,4 +271,39 @@ int main(int argc, char *argv[])
     std::cout << "\tanswer:" << answer_str << std::endl;
 
     return 0;
+}
+
+void DpfPir_Parallel(DpfPirClient &rpc, std::vector<uint8_t> &funckey, std::vector<hashdatastore::hash_type, hashdatastore::HashTypeAllocator> &ans)
+{
+    FuncKey request;
+    Answer reply;
+    ClientContext context;
+    context.AddMetadata("client_id", rpc.client_id);
+
+    /* set funckey */
+    string key_str(funckey.begin(), funckey.end());
+    request.set_funckey(key_str);
+
+    Status status = rpc.stub_->DpfPir(&context, request, &reply);
+
+    if (status.ok())
+    {
+
+        std::cout << "[" << rpc.client_id << "][" << rpc.serverAddr << "] "
+                  << "3.Receive PIR result." << std::endl;
+        for (size_t i = 0; i < rpc.num_slice; i++)
+        {
+            ans.push_back(rpc.stringToM256i(reply.answer().substr(i * 32, 32)));
+        }
+    }
+    else
+    {
+        std::cout << "RPC failed" << std::endl;
+        std::cout << status.error_code() << ": " << status.error_message()
+                  << std::endl;
+        for (size_t i = 0; i < rpc.num_slice; i++)
+        {
+            ans.push_back(__m256i());
+        }
+    }
 }

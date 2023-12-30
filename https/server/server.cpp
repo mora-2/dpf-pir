@@ -130,8 +130,8 @@ public:
     Status DpfPir(ServerContext *context, const FuncKey *request, Answer *response)
     {
         const string client_id = context->client_metadata().find("client_id")->second.data();
-        std::cout << "[" << client_id << "] "
-                  << "2.PIR...";
+        std::cout << "\r[" << client_id << "] "
+                  << "2.PIR..." << std::flush;
 
         /* receive func_key */
         std::vector<uint8_t> func_key(request->funckey().begin(), request->funckey().end());
@@ -224,7 +224,7 @@ void RunServer(uint8_t server_id)
 {
     // vector<string> db_keys = {"a", "b", "c", "d"}; // logN = 22, max_bits = 2
     // vector<string> db_elems = {"AappleAappleAappleAappleAappleaaAappleAAHSJAappleAappleAappleAappleAappleaaAappleAAHSJ", "AbananaAbanana", "AcatAcat", "AdogAdog"};
-    string json_path = "/home/yuance/Work/Encryption/PIR/code/PIR/dpf-pir/test/data/random_data10k.json";
+    string json_path = "/home/yuance/Work/Encryption/PIR/code/PIR/dpf-pir/test/data/random_data.json";
     size_t logN = 48; // 48 bit hash for one million entries
     DpfPirImpl service(server_id, logN, json_path);
 
