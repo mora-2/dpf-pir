@@ -22,6 +22,8 @@ using namespace std;
 using dpfpir::Answer;
 using dpfpir::DPFPIRInterface;
 using dpfpir::FuncKey;
+using dpfpir::Info;
+using dpfpir::Params;
 using grpc::Server;
 using grpc::ServerBuilder;
 using grpc::ServerContext;
@@ -38,7 +40,7 @@ private:
     size_t logN; // number of keyword bits
     hashdatastore db;
     size_t db_size;
-    size_t num; // num_value_slice
+    size_t num_slice; // num_value_slice
 
 public:
     DpfPirImpl(uint8_t server_id, size_t logN, vector<string> &db_keys, vector<string> &db_elems) : server_id(server_id), logN(logN)
@@ -46,24 +48,24 @@ public:
         assert(db_keys.size() <= ((1ULL << logN) - 1));
         assert(db_keys.size() == db_elems.size());
         this->db_size = db_keys.size();
-        num = getnum(db_elems);
-        db.resize_data(num);
+        this->num_slice = getnum(db_elems);
+        db.resize_data(num_slice);
         // Fill Datastore
         for (size_t i = 0; i < db_size; i++)
         {
-            this->db.push_back(db_keys[i], hashdatastore::KeywordType::STRING, str2vecstr(db_elems[i], num), num);
+            this->db.push_back(db_keys[i], hashdatastore::KeywordType::STRING, str2vecstr(db_elems[i], num_slice), num_slice);
         }
         // Pad
         if (db_size % 8 != 0)
         {
             vector<string> emp;
-            for (size_t i = 0; i < num; i++)
+            for (size_t i = 0; i < num_slice; i++)
             {
                 emp.push_back("");
             }
             for (size_t i = 0; i < (8 - db_size % 8); i++)
             {
-                this->db.push_back("", hashdatastore::KeywordType::STRING, emp, num);
+                this->db.push_back("", hashdatastore::KeywordType::STRING, emp, num_slice);
             }
         }
     };
@@ -87,36 +89,49 @@ public:
             db_elems.push_back(it.value());
         }
 
-        num = getnum(db_elems);
-        db.resize_data(num);
+        this->num_slice = getnum(db_elems);
+        db.resize_data(num_slice);
         assert(db_keys.size() <= ((1ULL << logN) - 1));
         assert(db_keys.size() == db_elems.size());
         this->db_size = db_keys.size();
         // Fill Datastore
         for (size_t i = 0; i < db_size; i++)
         {
-            this->db.push_back(db_keys[i], hashdatastore::KeywordType::HASH, str2vecstr(db_elems[i], num), num);
+            this->db.push_back(db_keys[i], hashdatastore::KeywordType::HASH, str2vecstr(db_elems[i], num_slice), num_slice);
         }
         // Pad
         if (db_size % 8 != 0)
         {
             vector<string> emp;
-            for (size_t i = 0; i < num; i++)
+            for (size_t i = 0; i < num_slice; i++)
             {
                 emp.push_back("");
             }
             for (size_t i = 0; i < (8 - db_size % 8); i++)
             {
-                this->db.push_back("", hashdatastore::KeywordType::HASH, emp, num);
+                this->db.push_back("", hashdatastore::KeywordType::HASH, emp, num_slice);
             }
         }
     };
+
+    Status DpfParams(ServerContext *context, const Info *request, Params *response)
+    {
+        const string client_id = context->client_metadata().find("client_id")->second.data();
+        std::cout << "[" << client_id << "] "
+                  << "1.Sending Params.";
+
+        response->set_logn(this->logN);
+        response->set_num_slice(this->num_slice);
+        std::cout << "\r[" << client_id << "] "
+                  << "1.Params sent.   " << std::endl;
+        return Status::OK;
+    }
 
     Status DpfPir(ServerContext *context, const FuncKey *request, Answer *response)
     {
         const string client_id = context->client_metadata().find("client_id")->second.data();
         std::cout << "[" << client_id << "] "
-                  << "1.Start PIR." << std::endl;
+                  << "2.PIR...";
 
         /* receive func_key */
         std::vector<uint8_t> func_key(request->funckey().begin(), request->funckey().end());
@@ -126,15 +141,15 @@ public:
         DPF::EvalKeywords(func_key, db.hashs_, logN, query);
 
         /* answer query */
-        std::vector<hashdatastore::hash_type, AlignmentAllocator<hashdatastore::hash_type, sizeof(hashdatastore::hash_type)>> answer;
-        for (size_t i = 0; i < num; i++)
+        std::vector<hashdatastore::hash_type, hashdatastore::HashTypeAllocator> answer;
+        for (size_t i = 0; i < num_slice; i++)
         {
             answer.push_back(db.answer_pir2(query, i));
         }
 
         /* set answer */
         std::string ans;
-        for (size_t i = 0; i < num; i++)
+        for (size_t i = 0; i < num_slice; i++)
         {
             ans += m256iToStr(answer[i]);
         }
@@ -142,8 +157,8 @@ public:
         /* send answer */
         response->set_answer(ans);
 
-        std::cout << "[" << client_id << "] "
-                  << "2.End PIR." << std::endl;
+        std::cout << "\r[" << client_id << "] "
+                  << "2.PIR end." << std::endl;
         return Status::OK;
     }
 
@@ -163,11 +178,11 @@ private:
         return resultString;
     }
 
-    std::vector<std::string> str2vecstr(std::string s, size_t num)
+    std::vector<std::string> str2vecstr(std::string s, size_t num_slice)
     {
         std::vector<std::string> result;
         size_t n = s.size();
-        for (size_t i = 0; i < num; i++)
+        for (size_t i = 0; i < num_slice; i++)
         {
             if (n > 32)
             {
@@ -180,9 +195,9 @@ private:
                 break;
             }
         }
-        if (result.size() < num)
+        if (result.size() < num_slice)
         {
-            result.resize(num);
+            result.resize(num_slice);
         }
         return result;
     }

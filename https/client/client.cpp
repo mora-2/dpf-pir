@@ -11,12 +11,15 @@
 #include <immintrin.h>
 #include <boost/program_options.hpp>
 #include <future> // muti-thread
+#include <cassert>
 
 namespace po = boost::program_options;
 using namespace std;
 using dpfpir::Answer;
 using dpfpir::DPFPIRInterface;
 using dpfpir::FuncKey;
+using dpfpir::Info;
+using dpfpir::Params;
 using grpc::Channel;
 using grpc::ClientContext;
 using grpc::ClientReader;
@@ -27,18 +30,57 @@ class DpfPirClient
 {
 public:
     string client_id;
-    size_t num;
+    size_t num_slice;
+    size_t logN;
 
 private:
     std::unique_ptr<DPFPIRInterface::Stub> stub_;
     string serverAddr;
 
 public:
-    explicit DpfPirClient(std::shared_ptr<Channel> channel, string &client_id, string serverAddr, size_t num) : stub_(DPFPIRInterface::NewStub(channel)), client_id(client_id), serverAddr(serverAddr), num(num){};
+    explicit DpfPirClient(std::shared_ptr<Channel> channel, string &client_id, string serverAddr) : stub_(DPFPIRInterface::NewStub(channel)), client_id(client_id), serverAddr(serverAddr){};
 
-    std::vector<hashdatastore::hash_type, AlignmentAllocator<hashdatastore::hash_type, sizeof(hashdatastore::hash_type)>> DpfPir(std::vector<uint8_t> funckey)
+    void DpfParams()
     {
-        std::vector<hashdatastore::hash_type, AlignmentAllocator<hashdatastore::hash_type, sizeof(hashdatastore::hash_type)>> result;
+        Info request;
+        Params reply;
+        ClientContext context;
+        context.AddMetadata("client_id", this->client_id);
+
+        Status status = stub_->DpfParams(&context, request, &reply);
+        if (status.ok())
+        {
+            this->logN = reply.logn();
+            this->num_slice = reply.num_slice();
+            return;
+        }
+        else
+        {
+            std::cout << "RPC failed" << std::endl;
+            std::cout << status.error_code() << ": " << status.error_message()
+                      << std::endl;
+            return;
+        }
+    }
+
+    static void checkParams(DpfPirClient &client0, DpfPirClient &client1)
+    {
+        assert(client0.logN == client1.logN);
+        assert(client0.num_slice == client1.num_slice);
+    }
+
+    static std::pair<std::vector<uint8_t>, std::vector<uint8_t>> GenFuncKeys(string &query_keyword, size_t logN)
+    {
+        uint64_t HASH_MASK = (1ULL << logN) - 1;
+        std::hash<std::string> hashFunction;
+        size_t query_index = hashFunction(query_keyword) & HASH_MASK; // 48 bits
+        std::pair<std::vector<uint8_t>, std::vector<uint8_t>> keys = DPF::Gen(query_index, logN);
+        return keys;
+    }
+
+    std::vector<hashdatastore::hash_type, hashdatastore::HashTypeAllocator> DpfPir(std::vector<uint8_t> funckey)
+    {
+        std::vector<hashdatastore::hash_type, hashdatastore::HashTypeAllocator> result;
 
         FuncKey request;
         Answer reply;
@@ -60,8 +102,8 @@ public:
         {
 
             std::cout << "[" << this->client_id << "][" << this->serverAddr << "] "
-                      << "2.Receive PIR result." << std::endl;
-            for (size_t i = 0; i < this->num; i++)
+                      << "3.Receive PIR result." << std::endl;
+            for (size_t i = 0; i < this->num_slice; i++)
             {
                 result.push_back(stringToM256i(reply.answer().substr(i * 32, 32)));
             }
@@ -71,12 +113,27 @@ public:
             std::cout << "RPC failed" << std::endl;
             std::cout << status.error_code() << ": " << status.error_message()
                       << std::endl;
-            for (size_t i = 0; i < this->num; i++)
+            for (size_t i = 0; i < this->num_slice; i++)
             {
                 result.push_back(__m256i());
             }
         }
         return result;
+    }
+
+    static string Reconstruction(std::vector<hashdatastore::hash_type, hashdatastore::HashTypeAllocator> &answer0, std::vector<hashdatastore::hash_type, hashdatastore::HashTypeAllocator> &answer1, size_t num_slice)
+    {
+        std::vector<hashdatastore::hash_type, hashdatastore::HashTypeAllocator> answer;
+        for (size_t i = 0; i < num_slice; i++)
+        {
+            answer.push_back(_mm256_xor_si256(answer0[i], answer1[i]));
+        }
+        std::string answer_str;
+        for (size_t i = 0; i < num_slice; i++)
+        {
+            answer_str += DpfPirClient::m256i2string(answer[i]);
+        }
+        return answer_str;
     }
 
 private:
@@ -107,21 +164,7 @@ private:
 
         return result;
     }
-};
 
-class Utils
-{
-public:
-    Utils() = delete;
-    static size_t string2uint64(string query_keyword)
-    {
-        size_t result = 0;
-        for (size_t i = 0; i < 8 && i < query_keyword.size(); i++)
-        {
-            result |= static_cast<size_t>(query_keyword[i]) << (8 * i);
-        }
-        return result;
-    }
     static string m256i2string(hashdatastore::hash_type value)
     {
         std::string result;
@@ -200,50 +243,27 @@ int main(int argc, char *argv[])
 #pragma endregion args
 
     /* RPC */
-    size_t num = 3;
-    DpfPirClient rpc_client0(grpc::CreateChannel(serverAddr0, grpc::InsecureChannelCredentials()), client_id, serverAddr0, num);
-    DpfPirClient rpc_client1(grpc::CreateChannel(serverAddr1, grpc::InsecureChannelCredentials()), client_id, serverAddr1, num);
+    DpfPirClient rpc_client0(grpc::CreateChannel(serverAddr0, grpc::InsecureChannelCredentials()), client_id, serverAddr0);
+    DpfPirClient rpc_client1(grpc::CreateChannel(serverAddr1, grpc::InsecureChannelCredentials()), client_id, serverAddr1);
+
+    /* Params */
+    rpc_client0.DpfParams();
+    rpc_client1.DpfParams();
+    DpfPirClient::checkParams(rpc_client0, rpc_client1); // check identity
+    std::cout << "[" << client_id << "] 1.Params received." << std::endl;
 
     /* GenFuncKeys */
-    size_t logN = 48; // 48 bit hash for one million entries
-    // size_t query_index = Utils::string2uint64(query_keyword);
-    uint64_t HASH_MASK = 0xFFFFFFFFFFFF;
-    std::hash<std::string> hashFunction;
-    size_t query_index = hashFunction(query_keyword) & HASH_MASK; // 48 bits
-    std::pair<std::vector<uint8_t>, std::vector<uint8_t>> keys = DPF::Gen(query_index, logN);
-    std::cout << "[" << client_id << "] "
-              << "1.GenFuncKeys." << std::endl;
+    std::pair<std::vector<uint8_t>, std::vector<uint8_t>> keys = DpfPirClient::GenFuncKeys(query_keyword, rpc_client0.logN);
+    std::cout << "[" << client_id << "] 2.GenFuncKeys." << std::endl;
 
     /* PIR */
-    std::vector<hashdatastore::hash_type, AlignmentAllocator<hashdatastore::hash_type, sizeof(hashdatastore::hash_type)>> answer0 = rpc_client0.DpfPir(keys.first);
-    std::vector<hashdatastore::hash_type, AlignmentAllocator<hashdatastore::hash_type, sizeof(hashdatastore::hash_type)>> answer1 = rpc_client1.DpfPir(keys.second);
-    // // Async call to rpc_client0.DpfPir(keys.first)
-    // std::future<hashdatastore::hash_type> future_answer0 =
-    //     std::async(std::launch::async, [&rpc_client0, &keys]()-> hashdatastore::hash_type
-    //                { return rpc_client0.DpfPir(keys.first); });
-
-    // // Async call to rpc_client1.DpfPir(keys.second)
-    // std::future<hashdatastore::hash_type> future_answer1 =
-    //     std::async(std::launch::async, [&rpc_client1, &keys]()-> hashdatastore::hash_type
-    //                  { return rpc_client1.DpfPir(keys.second); });
-
-    // // Wait for both futures to be ready and get the results
-    // hashdatastore::hash_type answer0 = future_answer0.get();
-    // hashdatastore::hash_type answer1 = future_answer1.get();
+    std::vector<hashdatastore::hash_type, hashdatastore::HashTypeAllocator> answer0 = rpc_client0.DpfPir(keys.first);
+    std::vector<hashdatastore::hash_type, hashdatastore::HashTypeAllocator> answer1 = rpc_client1.DpfPir(keys.second);
 
     /* Answer reconstructed */
+    string answer_str = DpfPirClient::Reconstruction(answer0, answer1, rpc_client0.num_slice);
     std::cout << "[" << client_id << "] "
-              << "3.Answer reconstructed: " << std::endl;
-    std::vector<hashdatastore::hash_type, AlignmentAllocator<hashdatastore::hash_type, sizeof(hashdatastore::hash_type)>> answer;
-    for (size_t i = 0; i < num; i++)
-    {
-        answer.push_back(_mm256_xor_si256(answer0[i], answer1[i]));
-    }
-    std::string answer_str;
-    for (size_t i = 0; i < num; i++)
-    {
-        answer_str += Utils::m256i2string(answer[i]);
-    }
+              << "4.Answer reconstructed: " << std::endl;
     std::cout << "\tanswer:" << answer_str << std::endl;
 
     return 0;

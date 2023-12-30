@@ -13,6 +13,7 @@ class hashdatastore
 {
 public:
     typedef __m256i hash_type;
+    using HashTypeAllocator = AlignmentAllocator<hash_type, sizeof(hash_type)>;
     enum KeywordType
     {
         STRING,
@@ -141,9 +142,9 @@ public:
     std::vector<size_t> keyword_;
     std::vector<size_t> hashs_;
     uint64_t HASH_MASK = 0xFFFFFFFFFFFF;
-    std::vector<std::vector<hash_type, AlignmentAllocator<hash_type, sizeof(hash_type)>>> data_s;
+    std::vector<std::vector<hash_type, HashTypeAllocator>> data_s;
 
 private:
-    std::vector<hash_type, AlignmentAllocator<hash_type, sizeof(hash_type)>> data_;
+    std::vector<hash_type, HashTypeAllocator> data_;
     std::hash<std::string> hashFunction_;
 };

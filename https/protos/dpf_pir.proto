@@ -15,11 +15,16 @@ syntax = "proto3";
 package dpfpir;
 
 service DPFPIRInterface {
+  rpc DpfParams(Info) returns (Params) {}
   rpc DpfPir(FuncKey) returns (Answer) {}
 }
 
 message Info { string info = 1; }
 
+message Params {
+  uint64 logN = 1;
+  uint64 num_slice = 2; // db elem length in 32 Bytes
+}
 message FuncKey { bytes funckey = 1; }
 
 message Answer { bytes answer = 1; }
