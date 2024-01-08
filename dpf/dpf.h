@@ -2,8 +2,8 @@
 
 #include <cstdlib>
 #include <vector>
-
 #include "Defines.h"
+
 namespace DPF
 {
     std::pair<std::vector<uint8_t>, std::vector<uint8_t>> Gen(size_t alpha, size_t logn);

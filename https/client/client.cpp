@@ -12,6 +12,7 @@
 #include <boost/program_options.hpp>
 #include <cassert>
 #include <thread>
+#include <chrono>
 
 namespace po = boost::program_options;
 using namespace std;
@@ -195,6 +196,7 @@ void DpfPir_Parallel(DpfPirClient &rpc, std::vector<uint8_t> &funckey, std::vect
 
 int main(int argc, char *argv[])
 {
+    auto start_time = std::chrono::high_resolution_clock::now();
     /* 219.245.186.51 */
     string Addr = "localhost";
     string serverAddr0 = Addr + ":50053";
@@ -270,6 +272,9 @@ int main(int argc, char *argv[])
               << "4.Answer reconstructed: " << std::endl;
     std::cout << "\tanswer:" << answer_str << std::endl;
 
+    auto end_time = std::chrono::high_resolution_clock::now();
+    auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end_time - start_time);
+    std::cout << "\tElapsed:" << duration.count() << "ms." << std::endl;
     return 0;
 }
 

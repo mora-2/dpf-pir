@@ -1,6 +1,6 @@
 #include "hashdatastore.h"
-
 #include <cassert>
+#include "omp.h"
 
 const hashdatastore::hash_type precomputed_masks[256][8] = {
     {

@@ -242,3 +242,9 @@ test/build/CMakeFiles/test.dir/test.cpp.o.d
 test/data/random_data.json
 test/data/random_data10k.json
 test/data/random.json
+test/data/random_data copy.json
+https/server/build/CMakeFiles/FindOpenMP/ompver_C.bin
+https/server/build/CMakeFiles/FindOpenMP/ompver_CXX.bin
+test/build/CMakeFiles/FindOpenMP/ompver_C.bin
+test/build/CMakeFiles/FindOpenMP/ompver_CXX.bin
+test/data/random-.json

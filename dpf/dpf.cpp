@@ -5,6 +5,7 @@
 #include "Log.h"
 #include <iostream>
 #include <cassert>
+#include "omp.h"
 
 namespace DPF
 {
@@ -239,15 +240,24 @@ namespace DPF
 
     void EvalKeywords(const std::vector<uint8_t> &key, std::vector<size_t> hashs, size_t logn, std::vector<uint8_t> &results)
     {
-        for (size_t i = 0; i < hashs.size(); i += 8)
+        assert((hashs.size() - 1) >= 0);
+        results.resize(((hashs.size() - 1) / 8) + 1);
+        // clang-format off
+        #pragma omp parallel num_threads(32)
         {
-            uint8_t tmp = 0;
-            for (size_t j = 0; j < 8; j++)
+            #pragma omp for
+            for (size_t i = 0; i < hashs.size(); i += 8)
             {
-                tmp |= Eval(key, hashs[i + j], logn) << j;
+                uint8_t tmp = 0;
+                for (size_t j = 0; j < 8; j++)
+                {
+                    tmp |= Eval(key, hashs[i + j], logn) << j;
+                }
+                results[i/8] = tmp;
             }
-            results.emplace_back(tmp);
+            #pragma omp barrier
         }
+        // clang-format on
     }
 
     void EvalFullRecursive(const std::vector<uint8_t> &key, block s, uint8_t t, size_t lvl, size_t stop, std::vector<uint8_t> &res)

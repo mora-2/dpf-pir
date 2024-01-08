@@ -54,9 +54,11 @@ target_link_libraries(pir_grpc_proto
   ${_GRPC_GRPCPP}
   ${_PROTOBUF_LIBPROTOBUF})
 
+# dpf_pir
 include_directories("${CMAKE_SOURCE_DIR}/../../dpf")
 add_subdirectory(${CMAKE_SOURCE_DIR}/../../dpf dpf_pir)
 
+# boost
 find_package(Boost REQUIRED COMPONENTS program_options)
 
 add_executable(${_target} ${_target}.cpp)
