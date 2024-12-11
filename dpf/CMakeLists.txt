@@ -37,6 +37,7 @@ set_target_properties(dpf_pir PROPERTIES
     LIBRARY_OUTPUT_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/lib
     ARCHIVE_OUTPUT_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/lib
 )
+target_link_libraries(dpf_pir PRIVATE OpenMP::OpenMP_CXX)
 
 # add_executable(dpf_pir ${SRCS} main.cpp)
 # target_link_libraries(dpf_pir crypto)

@@ -224,7 +224,7 @@ void RunServer(uint8_t server_id)
 {
     // vector<string> db_keys = {"a", "b", "c", "d"}; // logN = 22, max_bits = 2
     // vector<string> db_elems = {"AappleAappleAappleAappleAappleaaAappleAAHSJAappleAappleAappleAappleAappleaaAappleAAHSJ", "AbananaAbanana", "AcatAcat", "AdogAdog"};
-    string json_path = "/home/yuance/Work/Encryption/PIR/code/PIR/dpf-pir/test/data/random_data.json";
+    string json_path = "/home/yuance/Work/dpf-pir/test/data/random_data.json";
     size_t logN = 48; // 48 bit hash for one million entries
     DpfPirImpl service(server_id, logN, json_path);
 
